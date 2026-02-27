@@ -1,0 +1,23 @@
+ORDEN DEL SISTEMA ELITE (Frank, lee esto primero)
+==================================================
+
+Hola Frank! He organizado tus archivos para que sean súper fáciles de manejar. 
+Aquí tienes lo que significa cada cosa:
+
+📸 IMAGENES  -> Aquí dentro está tu foto. Si quieres poner más fotos para la web, ponlas aquí.
+🎥 VIDEOS    -> Aquí pon tus videos de presentación.
+🎨 DISEÑO    -> Aquí vive la "ropa" de la página (colores y estilos). No hace falta tocarlo.
+
+🚀 1-PROBAR-EN-MI-EQUIPO.bat -> HAZ DOBLE CLIC AQUÍ para ver tu página en tu computadora.
+
+🌐 index.html -> Es el cuerpo de tu página web.
+
+⚙️ netlify (Carpeta) y netlify.toml -> Son el "motor" para que la web funcione en internet. No hace falta que los abras.
+
+--------------------------------------------------
+¿CÓMO SUBO LOS CAMBIOS A INTERNET?
+--------------------------------------------------
+1. Abre Netlify en tu navegador.
+2. Arrastra ESTA CARPETA COMPLETA (la que se llama 'sistema-premium-360-landing') al cuadro de Netlify.
+
+¡Listo! Ya tienes un sistema ordenado y profesional. 👋🏆
