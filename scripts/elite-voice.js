@@ -745,7 +745,7 @@ RUTA B – WHATSAPP: Dile que haga clic en el botón de WhatsApp si prefiere ate
                 if (chatErr.name === 'AbortError') {
                     addMessage('ai', 'La respuesta tardó demasiado. Intenta de nuevo en un momento.');
                 } else {
-                    addMessage('ai', 'Hubo un problema de conexión. Intenta de nuevo.');
+                    addMessage('ai', 'Mi servidor está experimentando latencia. Dame un segundo y vuelve a escribirme.');
                 }
                 console.error('Chat error:', chatErr.message);
                 return; // No intentar TTS si el chat falló
@@ -773,8 +773,16 @@ RUTA B – WHATSAPP: Dile que haga clic en el botón de WhatsApp si prefiere ate
                     speakWithBrowser(voiceText);
                 }
             } catch (ttsErr) {
-                // TTS falló — usar browser como fallback silencioso
-                speakWithBrowser(sanitizeForTTS(aiText));
+                // TTS falló — usar Translate API como fallback y luego Browser
+                try {
+                    const chunk = sanitizeForTTS(aiText).substring(0, 199);
+                    const url = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=es&q=${encodeURIComponent(chunk)}`;
+                    const audioFallback = new Audio(url);
+                    audioFallback.onerror = () => speakWithBrowser(sanitizeForTTS(aiText));
+                    audioFallback.play().catch(() => speakWithBrowser(sanitizeForTTS(aiText)));
+                } catch (e) {
+                    speakWithBrowser(sanitizeForTTS(aiText));
+                }
             }
 
 
