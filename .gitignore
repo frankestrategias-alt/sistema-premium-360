@@ -1,2 +1,5 @@
 # Local Netlify folder
 .netlify
+
+# Local Test Scripts (to prevent API key leaks)
+test-*.js
