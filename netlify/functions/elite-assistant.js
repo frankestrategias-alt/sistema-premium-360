@@ -101,15 +101,39 @@ exports.handler = async (event, context) => {
                 if (elRes.ok) {
                     const arrayBuffer = await elRes.arrayBuffer();
                     const base64 = Buffer.from(arrayBuffer).toString('base64');
-                    return {
-                        statusCode: 200,
-                        headers: { "Access-Control-Allow-Origin": "*" },
-                        body: JSON.stringify({ audioContent: base64 })
-                    };
+                    return { statusCode: 200, headers: { "Access-Control-Allow-Origin": "*" }, body: JSON.stringify({ audioContent: base64 }) };
                 }
             }
 
-            // 2. Fallback a Google Cloud TTS
+            // 2. MICROSOFT NEURAL EDGE TTS (Gratis, Voz Hombre Ultra Premium)
+            try {
+                const { EdgeTTS } = require('node-edge-tts');
+                const fs = require('fs');
+                const path = require('path');
+                const os = require('os');
+
+                const tts = new EdgeTTS({
+                    voice: 'es-CO-GonzaloNeural', // Voz fluida de hombre
+                    lang: 'es-CO',
+                    outputFormat: 'audio-24khz-48kbitrate-mono-mp3'
+                });
+
+                const tempFilePath = path.join(os.tmpdir(), `tts-neural-${Date.now()}-${Math.floor(Math.random() * 1000)}.mp3`);
+                await tts.ttsPromise(textToSpeak, tempFilePath);
+
+                const audioContent = fs.readFileSync(tempFilePath, { encoding: 'base64' });
+                fs.unlinkSync(tempFilePath);
+
+                return {
+                    statusCode: 200,
+                    headers: { "Access-Control-Allow-Origin": "*" },
+                    body: JSON.stringify({ audioContent })
+                };
+            } catch (edgeError) {
+                console.error("Edge TTS Error:", edgeError);
+            }
+
+            // 3. Fallback a Google Cloud TTS si hay llave
             if (GOOGLE_CLOUD_KEY) {
                 const response = await fetch(
                     `https://texttospeech.googleapis.com/v1/text:synthesize?key=${GOOGLE_CLOUD_KEY}`,
@@ -125,23 +149,15 @@ exports.handler = async (event, context) => {
                 );
                 const data = await response.json();
                 if (response.ok) {
-                    return {
-                        statusCode: 200,
-                        headers: { "Access-Control-Allow-Origin": "*" },
-                        body: JSON.stringify({ audioContent: data.audioContent || null })
-                    };
+                    return { statusCode: 200, headers: { "Access-Control-Allow-Origin": "*" }, body: JSON.stringify({ audioContent: data.audioContent || null }) };
                 }
             }
 
-            // 3. Fallback final al Browser (retornar null para que el frontend maneje)
-            return {
-                statusCode: 200,
-                headers: { "Access-Control-Allow-Origin": "*" },
-                body: JSON.stringify({ audioContent: null })
-            };
+            // 4. Fallback final al Browser (retornar null)
+            return { statusCode: 200, headers: { "Access-Control-Allow-Origin": "*" }, body: JSON.stringify({ audioContent: null }) };
         }
 
-        return { statusCode: 400, body: JSON.stringify({ error: "Acción inválida." }) };
+        return { statusCode: 400, headers: { "Access-Control-Allow-Origin": "*" }, body: JSON.stringify({ error: "Acción inválida." }) };
 
     } catch (error) {
         console.error("Utility Error:", error);
