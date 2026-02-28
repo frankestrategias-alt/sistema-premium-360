@@ -544,8 +544,15 @@
     };
 
     const playAudio = (base64) => {
-        const audio = new Audio("data:audio/mp3;base64," + base64);
-        audio.play();
+        try {
+            const audio = new Audio("data:audio/mp3;base64," + base64);
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(e => console.warn("Autoplay bloqueado por In-App Browser:", e));
+            }
+        } catch (e) {
+            console.error("Error reproduciendo audio base64:", e);
+        }
     };
 
     // 🧹 Limpiar texto para TTS — elimina emojis, asteriscos y markdown
@@ -779,7 +786,10 @@ RUTA B – WHATSAPP: Dile que haga clic en el botón de WhatsApp si prefiere ate
                     const url = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=es&q=${encodeURIComponent(chunk)}`;
                     const audioFallback = new Audio(url);
                     audioFallback.onerror = () => speakWithBrowser(sanitizeForTTS(aiText));
-                    audioFallback.play().catch(() => speakWithBrowser(sanitizeForTTS(aiText)));
+                    const playPromise = audioFallback.play();
+                    if (playPromise !== undefined) {
+                        playPromise.catch(() => speakWithBrowser(sanitizeForTTS(aiText)));
+                    }
                 } catch (e) {
                     speakWithBrowser(sanitizeForTTS(aiText));
                 }
@@ -792,7 +802,7 @@ RUTA B – WHATSAPP: Dile que haga clic en el botón de WhatsApp si prefiere ate
             input.disabled = false;
             sendBtn.disabled = false;
             sendBtn.style.opacity = '1';
-            input.focus();
+            // input.focus(); // REMOVIDO: Causa bugs visuales (aparición/desaparición forzada del teclado) en Facebook WebView
             isProcessing = false;
         }
     };
@@ -826,7 +836,7 @@ RUTA B – WHATSAPP: Dile que haga clic en el botón de WhatsApp si prefiere ate
                             typing.innerHTML = '';
                             addMessage('ai', proactiveMsg);
                             conversationHistory.push({ role: 'ai', text: proactiveMsg });
-                            speakWithBrowser(proactiveMsg);
+                            // speakWithBrowser(proactiveMsg); // REMOVIDO: El In-App Browser lanza error si hay Audio sin gesto directo (click)
                             if (navigator.vibrate) navigator.vibrate(50);
                         }, 1800);
 
