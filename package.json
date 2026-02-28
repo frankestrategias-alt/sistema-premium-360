@@ -6,7 +6,6 @@
   "dependencies": {
     "express": "^5.2.1",
     "http-proxy-middleware": "^3.0.5",
-    "node-edge-tts": "^1.2.10",
     "node-fetch": "^2.6.7",
     "playwright": "^1.58.2"
   },
