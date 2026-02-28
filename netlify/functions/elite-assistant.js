@@ -24,7 +24,7 @@ exports.handler = async (event, context) => {
             const { text, prompt, history, systemPrompt, systemInstruction, temperature } = finalPayload;
             const finalUserPrompt = text || prompt;
             const finalSystemInstruction = systemPrompt || systemInstruction;
-            const modelId = "gemini-2.0-flash"; // Usamos flash 2.0 por defecto para velocidad elite
+            const modelId = "gemini-2.5-flash"; // Nuevo estándar obligado para nuevas API keys
 
             let contents = [];
 
