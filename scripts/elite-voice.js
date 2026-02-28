@@ -758,41 +758,140 @@ RUTA B – WHATSAPP: Dile que haga clic en el botón de WhatsApp si prefiere ate
                 return; // No intentar TTS si el chat falló
             }
 
-            // 2. Voice (Google TTS o Browser TTS) — sin bloquear el chat
+            // 2. Voice (Google TTS o Browser TTS) — Pre-buffering Queue Logic
             try {
-                // Limpiar el texto antes de mandarlo a voz (sin asteriscos ni emojis)
                 const voiceText = sanitizeForTTS(aiText);
 
-                const voiceRes = await fetchWithRetry('/api/elite-assistant', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        action: 'tts',
-                        payload: { text: voiceText }
-                    })
-                });
-                const voiceData = await voiceRes.json();
-                typing.innerHTML = '';
+                // --- CHUNKING LOGIC ---
+                // Dividir el texto en oraciones o pausas naturales más largas (aprox 150-200 caracteres max)
+                // para mantener el ritmo sin asfixiar la API.
+                let chunks = voiceText.match(/[^.!?]+[.!?]+|\s*[^.!?]+$/g) || [];
+                chunks = chunks.map(c => c.trim()).filter(c => c.length > 0);
 
-                if (voiceData.audioContent) {
-                    playAudio(voiceData.audioContent);
-                } else {
-                    speakWithBrowser(voiceText);
-                }
-            } catch (ttsErr) {
-                // TTS falló — usar Translate API como fallback y luego Browser
-                try {
-                    const chunk = sanitizeForTTS(aiText).substring(0, 199);
-                    const url = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=es&q=${encodeURIComponent(chunk)}`;
-                    const audioFallback = new Audio(url);
-                    audioFallback.onerror = () => speakWithBrowser(sanitizeForTTS(aiText));
-                    const playPromise = audioFallback.play();
-                    if (playPromise !== undefined) {
-                        playPromise.catch(() => speakWithBrowser(sanitizeForTTS(aiText)));
+                // Fusionar chunks muy cortos para no hacer peticiones excesivas (optimizamos a ~100-150 chars)
+                let optimizedChunks = [];
+                let currentChunk = "";
+                for (let i = 0; i < chunks.length; i++) {
+                    if ((currentChunk.length + chunks[i].length) < 160) {
+                        currentChunk += (currentChunk ? " " : "") + chunks[i];
+                    } else {
+                        if (currentChunk) optimizedChunks.push(currentChunk);
+                        currentChunk = chunks[i];
                     }
-                } catch (e) {
-                    speakWithBrowser(sanitizeForTTS(aiText));
                 }
+                if (currentChunk) optimizedChunks.push(currentChunk);
+
+                // Si el chunking falló y sigue vacío, usamos el texto completo
+                if (optimizedChunks.length === 0) optimizedChunks = [voiceText.substring(0, 199)];
+
+                // --- AUDIO QUEUE & PRE-BUFFERING ---
+                let audioQueue = [];
+                let isPlaying = false;
+                let currentChunkIndex = 0;
+
+                const fetchAudioForChunk = async (chunkIndex) => {
+                    if (chunkIndex >= optimizedChunks.length) return null;
+                    const textChunk = optimizedChunks[chunkIndex];
+
+                    try {
+                        const voiceRes = await fetchWithRetry('/api/elite-assistant', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                action: 'tts',
+                                payload: { text: textChunk }
+                            })
+                        });
+                        const voiceData = await voiceRes.json();
+                        if (voiceData.audioContent) {
+                            const audio = new Audio("data:audio/mp3;base64," + voiceData.audioContent);
+                            return audio;
+                        } else {
+                            // Fallback al browser directamente si el backend falla
+                            return { isBrowserFallback: true, text: textChunk };
+                        }
+                    } catch (e) {
+                        console.warn(`Falló fetch de audio para chunk ${chunkIndex}`, e);
+                        return { isBrowserFallback: true, text: textChunk };
+                    }
+                };
+
+                const playNextInQueue = async () => {
+                    if (audioQueue.length === 0 && currentChunkIndex >= optimizedChunks.length) {
+                        // Fin de la reproducción
+                        isPlaying = false;
+                        return;
+                    }
+
+                    isPlaying = true;
+                    if (audioQueue.length > 0) {
+                        const audioToPlay = audioQueue.shift();
+
+                        // PRE-BUFFER: Mientras este suena, descargamos el siguiente (si no se ha descargado ya)
+                        if (currentChunkIndex < optimizedChunks.length) {
+                            fetchAudioForChunk(currentChunkIndex).then(nextAudio => {
+                                if (nextAudio) audioQueue.push(nextAudio);
+                                currentChunkIndex++;
+                            });
+                        }
+
+                        if (audioToPlay.isBrowserFallback) {
+                            // Simulamos que el speech synthesis es como un audio y esperamos a que termine
+                            return new Promise(resolve => {
+                                const u = new SpeechSynthesisUtterance(audioToPlay.text);
+                                u.lang = 'es-ES';
+                                u.rate = 1.0;
+                                if (availableVoices.length === 0) loadVoices();
+                                const spanishVoices = availableVoices.filter(v => v.lang.toLowerCase().includes('es'));
+                                if (spanishVoices.length > 0) {
+                                    const bestVoice = spanishVoices.find(v => /premium|neural|sabina|google|natural|online/i.test(v.name));
+                                    u.voice = bestVoice || spanishVoices[0];
+                                }
+                                u.onend = () => { playNextInQueue(); resolve(); };
+                                u.onerror = () => { playNextInQueue(); resolve(); };
+                                window.speechSynthesis.speak(u);
+                            });
+                        } else {
+                            // Es un HTML Audio
+                            audioToPlay.onended = () => { playNextInQueue(); };
+                            audioToPlay.onerror = () => { playNextInQueue(); };
+                            const playPromise = audioToPlay.play();
+                            if (playPromise !== undefined) {
+                                playPromise.catch((e) => {
+                                    console.warn("Autoplay bloqueado:", e);
+                                    // Si se bloquea, intentamos el siguiente de todos modos
+                                    playNextInQueue();
+                                });
+                            }
+                        }
+                    } else {
+                        // La cola está vacía pero faltan chunks. Esperamos al siguiente.
+                        const nextAudio = await fetchAudioForChunk(currentChunkIndex);
+                        currentChunkIndex++;
+                        if (nextAudio) {
+                            audioQueue.push(nextAudio);
+                            playNextInQueue();
+                        } else {
+                            isPlaying = false;
+                        }
+                    }
+                };
+
+                typing.innerHTML = ''; // Limpiar "analizando..."
+
+                // INICIO DEL BUCLE: Descargar el primer chunk y arrancar
+                const firstAudio = await fetchAudioForChunk(currentChunkIndex);
+                currentChunkIndex++;
+                if (firstAudio) {
+                    audioQueue.push(firstAudio);
+                    playNextInQueue();
+                } else {
+                    speakWithBrowser(voiceText); // Fallback maestro
+                }
+
+            } catch (ttsErr) {
+                console.warn("Error crítico en TTS principal, usando fallback nativo.", ttsErr);
+                speakWithBrowser(sanitizeForTTS(aiText));
             }
 
 
